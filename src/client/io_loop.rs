@@ -552,13 +552,13 @@ impl<T: InvokeUiSession> Remote<T> {
                 match &msg.union {
                     Some(message::Union::Misc(misc)) => match misc.union {
                         Some(misc::Union::RefreshVideo(_)) => {
-                            self.video_threads.iter().for_each(|(_, v)| {
-                                *v.discard_queue.write().unwrap() = true;
-                            });
+                            self.video_threads
+                                .iter_mut()
+                                .for_each(|(_, v)| v.reset_for_refresh());
                         }
                         Some(misc::Union::RefreshVideoDisplay(display)) => {
                             if let Some(v) = self.video_threads.get_mut(&(display as usize)) {
-                                *v.discard_queue.write().unwrap() = true;
+                                v.reset_for_refresh();
                             }
                         }
                         _ => {}
@@ -2496,6 +2496,15 @@ struct VideoThread {
     frame_count: Arc<RwLock<usize>>,
     discard_queue: Arc<RwLock<bool>>,
     fps_control: FpsControl,
+}
+
+impl VideoThread {
+    fn reset_for_refresh(&mut self) {
+        *self.discard_queue.write().unwrap() = true;
+        let video_queue = self.video_queue.read().unwrap();
+        while video_queue.pop().is_some() {}
+        self.video_sender.send(MediaData::Reset).ok();
+    }
 }
 
 impl Drop for VideoThread {
