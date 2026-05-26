@@ -22,20 +22,21 @@ class _PixelbufferTexture {
 
   int get display => _display;
 
-  Future<void> create(int d, SessionID sessionId, FFI ffi) async {
+  create(int d, SessionID sessionId, FFI ffi) {
     _display = d;
     _textureKey = bind.getNextTextureKey();
     _sessionId = sessionId;
 
-    final id = await textureRenderer.createTexture(_textureKey);
-    _id = id;
-    if (id != -1) {
-      ffi.textureModel.setRgbaTextureId(display: d, id: id);
-      final ptr = await textureRenderer.getTexturePtr(_textureKey);
-      platformFFI.registerPixelbufferTexture(sessionId, display, ptr);
-      debugPrint(
-          "create pixelbuffer texture: peerId: ${ffi.id} display:$_display, textureId:$id, texturePtr:$ptr");
-    }
+    textureRenderer.createTexture(_textureKey).then((id) async {
+      _id = id;
+      if (id != -1) {
+        ffi.textureModel.setRgbaTextureId(display: d, id: id);
+        final ptr = await textureRenderer.getTexturePtr(_textureKey);
+        platformFFI.registerPixelbufferTexture(sessionId, display, ptr);
+        debugPrint(
+            "create pixelbuffer texture: peerId: ${ffi.id} display:$_display, textureId:$id, texturePtr:$ptr");
+      }
+    });
   }
 
   destroy(bool unregisterTexture, FFI ffi) async {
@@ -70,13 +71,12 @@ class _GpuTexture {
 
   _GpuTexture();
 
-  Future<void> create(int d, SessionID sessionId, FFI ffi) async {
+  create(int d, SessionID sessionId, FFI ffi) {
     if (support) {
       _sessionId = sessionId;
       _display = d;
 
-      try {
-        final id = await gpuTextureRenderer.registerTexture();
+      gpuTextureRenderer.registerTexture().then((id) async {
         _id = id;
         if (id != null) {
           _textureId = id;
@@ -89,9 +89,9 @@ class _GpuTexture {
           debugPrint(
               "create gpu texture: peerId: ${ffi.id} display:$_display, textureId:$id, output:$output");
         }
-      } catch (err) {
+      }, onError: (err) {
         debugPrint("Failed to register gpu texture:$err");
-      }
+      });
     }
   }
 
@@ -221,45 +221,6 @@ class TextureModel {
           tryRemoveTexture(i);
         }
       }
-    }
-  }
-
-  Future<void> _createTexture(int idx, FFI ffi) async {
-    if (!_pixelbufferRenderTextures.containsKey(idx)) {
-      final renderTexture = _PixelbufferTexture();
-      _pixelbufferRenderTextures[idx] = renderTexture;
-      await renderTexture.create(idx, ffi.sessionId, ffi);
-    }
-    if (!_gpuRenderTextures.containsKey(idx)) {
-      final renderTexture = _GpuTexture();
-      _gpuRenderTextures[idx] = renderTexture;
-      await renderTexture.create(idx, ffi.sessionId, ffi);
-    }
-  }
-
-  Future<void> recreateCurrentDisplayTextures(int curDisplay) async {
-    if (isWeb) return;
-    final ffi = parent.target;
-    if (ffi == null) return;
-
-    final displays = curDisplay == kAllDisplayValue
-        ? List<int>.generate(ffi.ffiModel.pi.getCurDisplays().length, (i) => i)
-        : <int>[curDisplay];
-
-    for (final idx in displays) {
-      _control.remove(idx);
-      final pixelbufferTexture = _pixelbufferRenderTextures.remove(idx);
-      if (pixelbufferTexture != null) {
-        await pixelbufferTexture.destroy(true, ffi);
-      }
-      final gpuTexture = _gpuRenderTextures.remove(idx);
-      if (gpuTexture != null) {
-        await gpuTexture.destroy(true, ffi);
-      }
-    }
-
-    for (final idx in displays) {
-      await _createTexture(idx, ffi);
     }
   }
 

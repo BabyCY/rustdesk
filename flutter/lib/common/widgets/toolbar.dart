@@ -293,12 +293,11 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
     v.add(TTextMenu(
       child: Text(translate('Refresh')),
       onPressed: () async {
-        if (isDesktop &&
-            ffi.imageModel.useTextureRender &&
-            !pi.forceTextureRender) {
-          await bind.mainSetLocalOption(key: kOptionTextureRender, value: 'N');
+        if (isDesktop) {
+          ffi.ffiModel.reconnect(ffi.dialogManager, sessionId, false);
+        } else {
+          await sessionRefreshVideo(sessionId, pi);
         }
-        await sessionRefreshVideo(sessionId, pi);
       },
     ));
   }
