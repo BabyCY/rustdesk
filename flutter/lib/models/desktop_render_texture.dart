@@ -224,6 +224,30 @@ class TextureModel {
     }
   }
 
+  Future<void> recreateCurrentDisplayTextures(int curDisplay) async {
+    if (isWeb) return;
+    final ffi = parent.target;
+    if (ffi == null) return;
+
+    final displays = curDisplay == kAllDisplayValue
+        ? List<int>.generate(ffi.ffiModel.pi.getCurDisplays().length, (i) => i)
+        : <int>[curDisplay];
+
+    for (final idx in displays) {
+      _control.remove(idx);
+      final pixelbufferTexture = _pixelbufferRenderTextures.remove(idx);
+      if (pixelbufferTexture != null) {
+        await pixelbufferTexture.destroy(true, ffi);
+      }
+      final gpuTexture = _gpuRenderTextures.remove(idx);
+      if (gpuTexture != null) {
+        await gpuTexture.destroy(true, ffi);
+      }
+    }
+
+    updateCurrentDisplay(curDisplay);
+  }
+
   onRemotePageDispose(bool closeSession) async {
     final ffi = parent.target;
     if (ffi == null) return;

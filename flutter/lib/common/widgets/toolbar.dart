@@ -292,7 +292,12 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
   if (pi.version.isNotEmpty) {
     v.add(TTextMenu(
       child: Text(translate('Refresh')),
-      onPressed: () => sessionRefreshVideo(sessionId, pi),
+      onPressed: () async {
+        if (isDesktop && (ffi.imageModel.useTextureRender || pi.forceTextureRender)) {
+          await ffi.textureModel.recreateCurrentDisplayTextures(pi.currentDisplay);
+        }
+        await sessionRefreshVideo(sessionId, pi);
+      },
     ));
   }
   // record
