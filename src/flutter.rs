@@ -26,6 +26,7 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, RwLock,
     },
+    time::{Duration, Instant},
 };
 
 /// tag "main" for [Desktop Main Page] and [Mobile (Client and Server)] (the mobile don't need multiple windows, only one global event stream is needed)
@@ -48,6 +49,8 @@ lazy_static::lazy_static! {
     pub(crate) static ref CUR_SESSION_ID: RwLock<SessionID> = Default::default(); // For desktop only
     static ref GLOBAL_EVENT_STREAM: RwLock<HashMap<String, StreamSink<String>>> = Default::default(); // rust to dart event channel
 }
+
+const STALE_RGBA_FRAME_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[cfg(target_os = "windows")]
 lazy_static::lazy_static! {
@@ -245,6 +248,8 @@ struct RgbaData {
     // We must check the `rgba_valid` before reading [rgba].
     data: Vec<u8>,
     valid: bool,
+    valid_since: Option<Instant>,
+    dropped_while_valid: usize,
 }
 
 pub type FlutterRgbaRendererPluginOnRgba = unsafe extern "C" fn(
@@ -1098,6 +1103,8 @@ impl InvokeUiSession for FlutterHandler {
     fn next_rgba(&self, _display: usize) {
         if let Some(rgba_data) = self.display_rgbas.write().unwrap().get_mut(&_display) {
             rgba_data.valid = false;
+            rgba_data.valid_since = None;
+            rgba_data.dropped_while_valid = 0;
         }
     }
 
@@ -1202,16 +1209,31 @@ impl FlutterHandler {
         let mut rgba_write_lock = self.display_rgbas.write().unwrap();
         if let Some(rgba_data) = rgba_write_lock.get_mut(&display) {
             if rgba_data.valid {
-                return;
+                rgba_data.dropped_while_valid = rgba_data.dropped_while_valid.saturating_add(1);
+                let is_stale = rgba_data
+                    .valid_since
+                    .map(|tm| tm.elapsed() >= STALE_RGBA_FRAME_TIMEOUT)
+                    .unwrap_or(false);
+                if !is_stale {
+                    return;
+                }
+                log::warn!(
+                    "stale rgba frame for display {display}, pending for {:?}, dropped {} frames; replacing it",
+                    rgba_data.valid_since.map(|tm| tm.elapsed()),
+                    rgba_data.dropped_while_valid,
+                );
             } else {
                 rgba_data.valid = true;
             }
+            rgba_data.valid_since = Some(Instant::now());
+            rgba_data.dropped_while_valid = 0;
             // Return the rgba buffer to the video handler for reusing allocated rgba buffer.
             std::mem::swap::<Vec<u8>>(&mut rgba.raw, &mut rgba_data.data);
         } else {
             let mut rgba_data = RgbaData::default();
             std::mem::swap::<Vec<u8>>(&mut rgba.raw, &mut rgba_data.data);
             rgba_data.valid = true;
+            rgba_data.valid_since = Some(Instant::now());
             rgba_write_lock.insert(display, rgba_data);
         }
         drop(rgba_write_lock);
@@ -1244,6 +1266,8 @@ impl FlutterHandler {
         if !is_sent {
             if let Some(rgba_data) = self.display_rgbas.write().unwrap().get_mut(&display) {
                 rgba_data.valid = false;
+                rgba_data.valid_since = None;
+                rgba_data.dropped_while_valid = 0;
             }
         }
     }
