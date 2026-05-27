@@ -446,7 +446,7 @@ class RemoteToolbar extends StatefulWidget {
   final Function(int, Function(bool)) onEnterOrLeaveImageSetter;
   final Function(int) onEnterOrLeaveImageCleaner;
   final Function(VoidCallback) setRemoteState;
-  final Future<void> Function() restartRemoteSession;
+  final Future<void> Function()? restartRemoteSession;
 
   RemoteToolbar({
     Key? key,
@@ -456,7 +456,7 @@ class RemoteToolbar extends StatefulWidget {
     required this.onEnterOrLeaveImageSetter,
     required this.onEnterOrLeaveImageCleaner,
     required this.setRemoteState,
-    required this.restartRemoteSession,
+    this.restartRemoteSession,
   }) : super(key: key);
 
   @override
@@ -3002,7 +3002,7 @@ class _DraggableShowHide extends StatefulWidget {
 
   final Function(bool) setFullscreen;
   final Function() setMinimize;
-  final Future<void> Function() restartRemoteSession;
+  final Future<void> Function()? restartRemoteSession;
 
   const _DraggableShowHide({
     Key? key,
@@ -3021,7 +3021,7 @@ class _DraggableShowHide extends StatefulWidget {
     required this.toolbarState,
     required this.setFullscreen,
     required this.setMinimize,
-    required this.restartRemoteSession,
+    this.restartRemoteSession,
     required this.borderRadius,
   }) : super(key: key);
 
@@ -3293,18 +3293,19 @@ class _DraggableShowHideState extends State<_DraggableShowHide> {
                   ),
                 ),
               )),
-        buttonWrapper(
-          () async {
-            await widget.restartRemoteSession();
-          },
-          Tooltip(
-            message: translate('Refresh'),
-            child: Icon(
-              Icons.refresh,
-              size: iconSize,
+        if (widget.restartRemoteSession != null)
+          buttonWrapper(
+            () async {
+              await widget.restartRemoteSession?.call();
+            },
+            Tooltip(
+              message: translate('Refresh'),
+              child: Icon(
+                Icons.refresh,
+                size: iconSize,
+              ),
             ),
           ),
-        ),
         buttonWrapper(
           () => setState(() {
             widget.toolbarState.switchCollapse(widget.sessionId);
