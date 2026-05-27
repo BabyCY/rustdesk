@@ -294,7 +294,7 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
       child: Text(translate('Refresh')),
       onPressed: () async {
         if (isDesktop) {
-          ffi.ffiModel.reconnect(ffi.dialogManager, sessionId, false);
+          closeConnection(id: id);
         } else {
           await sessionRefreshVideo(sessionId, pi);
         }
