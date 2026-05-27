@@ -101,6 +101,7 @@ class _RemotePageState extends State<RemotePage>
   Function(bool)? _onEnterOrLeaveImage4Toolbar;
 
   late FFI _ffi;
+  bool _restartingSession = false;
 
   SessionID get sessionId => _ffi.sessionId;
 
@@ -120,6 +121,16 @@ class _RemotePageState extends State<RemotePage>
     super.initState();
     _ffi = FFI(widget.sessionId);
     Get.put<FFI>(_ffi, tag: widget.id);
+    _startRemoteSession();
+    if (!isWeb) bind.pluginSyncUi(syncTo: kAppTypeDesktopRemote);
+    DesktopMultiWindow.addListener(this);
+    // Call onSelected in post frame callback, since we cannot guarantee that the callback will not call setState.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.tabController?.onSelected?.call(widget.id);
+    });
+  }
+
+  void _startRemoteSession({bool useExistingSessionArgs = true}) {
     _ffi.imageModel.addCallbackOnFirstImage((String peerId) {
       _ffi.canvasModel.activateLocalCursor();
       showKBLayoutTypeChooserIfNeeded(
@@ -134,7 +145,7 @@ class _RemotePageState extends State<RemotePage>
       isSharedPassword: widget.isSharedPassword,
       switchUuid: widget.switchUuid,
       forceRelay: widget.forceRelay,
-      tabWindowId: widget.tabWindowId,
+      tabWindowId: useExistingSessionArgs ? widget.tabWindowId : null,
       display: widget.display,
       displays: widget.displays,
     );
@@ -146,7 +157,6 @@ class _RemotePageState extends State<RemotePage>
     WakelockManager.enable(_uniqueKey);
 
     _ffi.ffiModel.updateEventListener(sessionId, widget.id);
-    if (!isWeb) bind.pluginSyncUi(syncTo: kAppTypeDesktopRemote);
     _ffi.qualityMonitorModel.checkShowQualityMonitor(sessionId);
     _ffi.dialogManager.loadMobileActionsOverlayVisible();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -156,7 +166,6 @@ class _RemotePageState extends State<RemotePage>
       _zoomCursor.value = bind.sessionGetToggleOptionSync(
           sessionId: sessionId, arg: kOptionZoomCursor);
     });
-    DesktopMultiWindow.addListener(this);
     // if (!_isCustomCursorInited) {
     //   customCursorController.registerNeedUpdateCursorCallback(
     //       (String? lastKey, String? currentKey) async {
@@ -170,14 +179,33 @@ class _RemotePageState extends State<RemotePage>
     // }
 
     _blockableOverlayState.applyFfi(_ffi);
-    // Call onSelected in post frame callback, since we cannot guarantee that the callback will not call setState.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      widget.tabController?.onSelected?.call(widget.id);
-    });
-
-    // Register callback to cancel debounce timer when relative mouse mode is disabled
     _ffi.inputModel.onRelativeMouseModeDisabled =
         _cancelPointerLockCenterDebounceTimer;
+  }
+
+  Future<void> _restartRemoteSession() async {
+    if (_restartingSession) return;
+    _restartingSession = true;
+    final oldFfi = _ffi;
+    try {
+      oldFfi.dialogManager.dismissAll();
+      oldFfi.inputModel.setRelativeMouseMode(false);
+      oldFfi.textureModel.onRemotePageDispose(true);
+      oldFfi.imageModel.disposeImage();
+      oldFfi.cursorModel.disposeImages();
+      await oldFfi.close(closeSession: true);
+      await Get.delete<FFI>(tag: widget.id);
+
+      if (!mounted) return;
+      final newFfi = FFI(null);
+      Get.put<FFI>(newFfi, tag: widget.id);
+      setState(() {
+        _ffi = newFfi;
+      });
+      _startRemoteSession(useExistingSessionArgs: false);
+    } finally {
+      _restartingSession = false;
+    }
   }
 
   /// Cancel the pointer lock center debounce timer
@@ -370,6 +398,7 @@ class _RemotePageState extends State<RemotePage>
             }
           },
           setRemoteState: setState,
+          restartRemoteSession: _restartRemoteSession,
         );
 
     bodyWidget() {

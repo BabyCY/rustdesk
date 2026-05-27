@@ -446,6 +446,7 @@ class RemoteToolbar extends StatefulWidget {
   final Function(int, Function(bool)) onEnterOrLeaveImageSetter;
   final Function(int) onEnterOrLeaveImageCleaner;
   final Function(VoidCallback) setRemoteState;
+  final Future<void> Function() restartRemoteSession;
 
   RemoteToolbar({
     Key? key,
@@ -455,6 +456,7 @@ class RemoteToolbar extends StatefulWidget {
     required this.onEnterOrLeaveImageSetter,
     required this.onEnterOrLeaveImageCleaner,
     required this.setRemoteState,
+    required this.restartRemoteSession,
   }) : super(key: key);
 
   @override
@@ -794,6 +796,7 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
             toolbarState: widget.state,
             setFullscreen: _setFullscreen,
             setMinimize: _minimize,
+            restartRemoteSession: widget.restartRemoteSession,
             borderRadius: borderRadius,
           ),
         ),
@@ -2999,6 +3002,7 @@ class _DraggableShowHide extends StatefulWidget {
 
   final Function(bool) setFullscreen;
   final Function() setMinimize;
+  final Future<void> Function() restartRemoteSession;
 
   const _DraggableShowHide({
     Key? key,
@@ -3017,6 +3021,7 @@ class _DraggableShowHide extends StatefulWidget {
     required this.toolbarState,
     required this.setFullscreen,
     required this.setMinimize,
+    required this.restartRemoteSession,
     required this.borderRadius,
   }) : super(key: key);
 
@@ -3288,6 +3293,18 @@ class _DraggableShowHideState extends State<_DraggableShowHide> {
                   ),
                 ),
               )),
+        buttonWrapper(
+          () async {
+            await widget.restartRemoteSession();
+          },
+          Tooltip(
+            message: translate('Refresh'),
+            child: Icon(
+              Icons.refresh,
+              size: iconSize,
+            ),
+          ),
+        ),
         buttonWrapper(
           () => setState(() {
             widget.toolbarState.switchCollapse(widget.sessionId);

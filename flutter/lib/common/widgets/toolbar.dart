@@ -289,15 +289,11 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
             showConfirmSwitchSidesDialog(sessionId, id, ffi.dialogManager)));
   }
   // refresh
-  if (pi.version.isNotEmpty) {
+  if (pi.version.isNotEmpty && !isDesktop) {
     v.add(TTextMenu(
       child: Text(translate('Refresh')),
       onPressed: () async {
-        if (isDesktop) {
-          closeConnection(id: id);
-        } else {
-          await sessionRefreshVideo(sessionId, pi);
-        }
+        await sessionRefreshVideo(sessionId, pi);
       },
     ));
   }
