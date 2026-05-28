@@ -668,6 +668,12 @@ fn run(vs: VideoService) -> ResultType<()> {
             if vs.source.is_monitor() {
                 let _ = try_broadcast_display_changed(&sp, display_idx, &c, true);
             }
+            if send_counter == 0 && encode_fail_counter > 0 && encoder.is_hardware() {
+                encoder.disable();
+                log::warn!(
+                    "disable hardware encoder after refresh before first frame, encode fails: {encode_fail_counter}"
+                );
+            }
             log::info!("switch to refresh");
             bail!("SWITCH");
         }
