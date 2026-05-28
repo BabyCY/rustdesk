@@ -1175,6 +1175,11 @@ fn handle_one_frame(
             if !cfg!(target_os = "android") {
                 log::error!("encode fail: {e:?}, times: {}", *encode_fail_counter,);
             }
+            if cfg!(target_os = "macos") && first && encoder.is_hardware() {
+                encoder.disable();
+                log::warn!("disable hardware encoder after first-frame encode failure: {e:?}");
+                bail!("SWITCH");
+            }
             let max_fail_times = if cfg!(target_os = "android") && encoder.is_hardware() {
                 9
             } else {
