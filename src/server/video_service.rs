@@ -647,7 +647,7 @@ fn run(vs: VideoService) -> ResultType<()> {
     let mut repeat_encode_counter = 0;
     let repeat_encode_max = 10;
     let mut encode_fail_counter = 0;
-    let mut first_frame = true;
+    let mut sent_frame = false;
     let capture_width = c.width;
     let capture_height = c.height;
     let (mut second_instant, mut send_counter) = (Instant::now(), 0);
@@ -668,7 +668,12 @@ fn run(vs: VideoService) -> ResultType<()> {
             if vs.source.is_monitor() {
                 let _ = try_broadcast_display_changed(&sp, display_idx, &c, true);
             }
-            if send_counter == 0 && encode_fail_counter > 0 && encoder.is_hardware() {
+            if cfg!(target_os = "macos") && encode_fail_counter > 0 && encoder.is_hardware() {
+                encoder.disable();
+                log::warn!(
+                    "disable macOS hardware encoder after refresh with encode failures: {encode_fail_counter}"
+                );
+            } else if send_counter == 0 && encode_fail_counter > 0 && encoder.is_hardware() {
                 encoder.disable();
                 log::warn!(
                     "disable hardware encoder after refresh before first frame, encode fails: {encode_fail_counter}"
@@ -779,7 +784,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                         &mut encoder,
                         recorder.clone(),
                         &mut encode_fail_counter,
-                        &mut first_frame,
+                        &mut sent_frame,
                         capture_width,
                         capture_height,
                     )?;
@@ -838,7 +843,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                             &mut encoder,
                             recorder.clone(),
                             &mut encode_fail_counter,
-                            &mut first_frame,
+                            &mut sent_frame,
                             capture_width,
                             capture_height,
                         )?;
@@ -1140,7 +1145,7 @@ fn handle_one_frame(
     encoder: &mut Encoder,
     recorder: Arc<Mutex<Option<Recorder>>>,
     encode_fail_counter: &mut usize,
-    first_frame: &mut bool,
+    sent_frame: &mut bool,
     width: usize,
     height: usize,
 ) -> ResultType<HashSet<i32>> {
@@ -1154,8 +1159,7 @@ fn handle_one_frame(
     })?;
 
     let mut send_conn_ids: HashSet<i32> = Default::default();
-    let first = *first_frame;
-    *first_frame = false;
+    let first = !*sent_frame;
     match encoder.encode_to_message(frame, ms) {
         Ok(mut vf) => {
             *encode_fail_counter = 0;
@@ -1168,6 +1172,9 @@ fn handle_one_frame(
                 .as_mut()
                 .map(|r| r.write_message(&msg, width, height));
             send_conn_ids = sp.send_video_frame(msg);
+            if !send_conn_ids.is_empty() {
+                *sent_frame = true;
+            }
         }
         Err(e) => {
             *encode_fail_counter += 1;
@@ -1175,9 +1182,11 @@ fn handle_one_frame(
             if !cfg!(target_os = "android") {
                 log::error!("encode fail: {e:?}, times: {}", *encode_fail_counter,);
             }
-            if cfg!(target_os = "macos") && first && encoder.is_hardware() {
+            if cfg!(target_os = "macos") && encoder.is_hardware() {
                 encoder.disable();
-                log::warn!("disable hardware encoder after first-frame encode failure: {e:?}");
+                log::warn!(
+                    "disable macOS hardware encoder after encode failure, first successful frame pending: {first}, error: {e:?}"
+                );
                 bail!("SWITCH");
             }
             let max_fail_times = if cfg!(target_os = "android") && encoder.is_hardware() {
